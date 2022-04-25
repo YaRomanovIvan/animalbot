@@ -1,6 +1,8 @@
 import logging
 import os
 
+import requests
+
 from exceptions import TokenException
 from telegram import ReplyKeyboardMarkup
 from telegram.ext import Updater, CommandHandler
@@ -16,11 +18,14 @@ logging.basicConfig(
 )
 
 secret_token = os.getenv('SECRET_TOKEN')
-URL_CAT = 'https://api.thecatapi.com/v1/images/search'
-URL_DOG = 'https://api.thedogapi.com/v1/images/search'
-URL_FOX = 'https://randomfox.ca/floof/'
+URL_ANIMAL = {
+    '/newcat': 'https://api.thecatapi.com/v1/images/search',
+    '/newdog': 'https://api.thedogapi.com/v1/images/search',
+}
+
 
 def check_secret_token():
+    """Проверка наличия секретного токена"""
     if not secret_token:
         logging.critical(f'ОШИБКА ТОКЕНА! Вы не указали токен!')
         raise TokenException('Вы не указали токен!')
@@ -28,13 +33,14 @@ def check_secret_token():
 
 
 def bot_send_message(context, chat, name):
+    """Функция 'привет' от бота при команде start"""
     button = ReplyKeyboardMarkup(
-        [['/newcat', '/newdog', '/newfox']],
+        [['/newcat', '/newdog']],
         resize_keyboard=True
     )
     messages = [
         'Привет, {}. Я бот, который может присылать тебе разные картинки!'.format(name),
-        'Я могу прислать тебе картинки лисичек, собачек и котеек!',
+        'Я могу прислать тебе картинки собачек и котеек!',
         'Потрясающе не правда-ли?)',
         'Попробуй нажать на кнопку и убедись в этом!'
     ]
@@ -47,8 +53,23 @@ def bot_send_message(context, chat, name):
     logging.info('Сообщения бота при /start успешно отправлены')
 
 
-def get_new_image():
+def get_new_image(url):
+    """Получение нового изображения. Ф-ия принимает текст сообщения из чата и вызывает URL API по ключу."""
+    try:
+        response = requests.get(URL_ANIMAL[url])
+        random_animal = response.json()[0].get('url')
+        logging.info('Новое изображение отправлено!')
+        return random_animal
+    except Exception as error:
+        logging.error(f'Ошибка API при отправке изображения! {error}')
+        response = requests.get('https://randomfox.ca/floof/').json()
+        return response['image']
 
+
+def new_animal(update, context):
+    """Отправляем рандомную картинку с котиком/собачкой пользователю Telegram"""
+    chat = update.effective_chat
+    context.bot.send_photo(chat.id, get_new_image(update.message.text))
 
 
 def wake_up(update, context):
@@ -62,9 +83,8 @@ def main():
     check_secret_token()
     updater = Updater(token=secret_token)
     updater.dispatcher.add_handler(CommandHandler('start', wake_up))
-    # updater.dispatcher.add_handler(CommandHandler('new_cat'))
-    # updater.dispatcher.add_handler(CommandHandler('new_dog'))
-    # updater.dispatcher.add_handler(CommandHandler('new_fox'))
+    updater.dispatcher.add_handler(CommandHandler('newcat', new_animal))
+    updater.dispatcher.add_handler(CommandHandler('newdog', new_animal))
 
     updater.start_polling()
     updater.idle()
